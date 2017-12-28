@@ -54,20 +54,24 @@ class SRDense(object):
         self.growth_rate = growth_rate
 
         self.build_model()
-
-    def DesWeightH(self, layers):
+    
+    # Create DenseNet init weight and biases
+    def DesWBH(self, layers, filter_size):
         weightsH = {}
+        biasesH = {}
         for i in range(1, layers+1):
-            weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([3, 3, self.growth_rate,self.growth_rate ], stddev=np.sqrt(2.0/9/self.growth_rate)))})
-        return weightsH
+            weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([filter_size, filter_size, self.growth_rate, self.growth_rate], stddev=np.sqrt(2.0/filter_size * filter_size/self.growth_rate)), name='w_H_%d' % i)})
+            biasesH.update({'b_H_%d' % i:tf.Variable(tf.zeros([filter_size * filter_size ], name='b_H_%d' % i))})
+        return weightsH, biasesH
 
     def build_model(self):
         self.images = tf.placeholder(tf.float32, [None, self.image_size, self.image_size, self.c_dim], name='images')
         self.labels = tf.placeholder(tf.float32, [None, self.label_size, self.label_size, self.c_dim], name='labels')
 
-        # NOTE: One block
-        self.weight_block = self.DesWeightH(self.des_block_H)
+        # NOTE: One block weight
+        self.weight_block, self.biases_block = self.DesWBH(self.des_block_H, 3)
         print(self.weight_block)
+        print(self.biases_block)
 
 
     #def model(self):
