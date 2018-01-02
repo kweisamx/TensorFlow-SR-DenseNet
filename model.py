@@ -15,10 +15,6 @@ from utils import (
     modcrop,
     make_bicubic,
 )
-def conv_layer(input_, bias, weights, strides, padding='SAME'):
-    conv = tf.nn.conv2d(input_, weights, strides=strides, padding=padding) + biases
-    return conv
-
 def Relu(input_):
     return tf.nn.relu(input_)
 
@@ -60,21 +56,49 @@ class SRDense(object):
         weightsH = {}
         biasesH = {}
         for i in range(1, layers+1):
-            weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([filter_size, filter_size, self.growth_rate, self.growth_rate], stddev=np.sqrt(2.0/filter_size * filter_size/self.growth_rate)), name='w_H_%d' % i)})
-            biasesH.update({'b_H_%d' % i:tf.Variable(tf.zeros([filter_size * filter_size ], name='b_H_%d' % i))})
+            if i is 1:
+                weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([filter_size, filter_size, self.growth_rate, self.growth_rate], stddev=np.sqrt(2.0/filter_size * filter_size/self.growth_rate)), name='w_H_%d' % i)}) 
+            else:
+                weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([filter_size, filter_size, self.growth_rate * (i-1), self.growth_rate], stddev=np.sqrt(2.0/filter_size * filter_size/self.growth_rate * i )), name='w_H_%d' % i)}) 
+            biasesH.update({'b_H_%d' % i:tf.Variable(tf.zeros([self.growth_rate], name='b_H_%d' % i))})
         return weightsH, biasesH
+    
+
+    # Create one Dense Block Convolution Layer 
+    def desBlock(self, layers, filter_size):
+        conv = []
+        for i in range(1, layers+1):
+            # The first conv need connect with low level layer
+            if i is 1:
+                x = (tf.nn.conv2d(self.low_conv, self.weight_block['w_H_%d' % i], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_%d' % i])
+                x = tf.nn.relu(x)
+                conv.append(x)
+            else:
+                concat = Concatenation(conv)
+                x = (tf.nn.conv2d(concat, self.weight_block['w_H_%d' % i], strides=[1,1,1,1], padding='SAME')+ self.biases_block['b_H_%d' % i])
+                x = tf.nn.relu(x)
+                conv.append(x)
+        return conv
+ 
+    def model(self):
+        
+        a =self.desBlock(self.des_block_H, 3)    
+        print(Concatenation(a))
+        
+
 
     def build_model(self):
         self.images = tf.placeholder(tf.float32, [None, self.image_size, self.image_size, self.c_dim], name='images')
         self.labels = tf.placeholder(tf.float32, [None, self.label_size, self.label_size, self.c_dim], name='labels')
-
-        # NOTE: One block weight
+        # Low Level Layer
+        self.low_weight = tf.Variable(tf.random_normal([3, 3, self.c_dim, 16], stddev= np.sqrt(2.0/9/16)), name='w_low')
+        self.low_biases = tf.Variable(tf.zeros([16], name='b_low'))
+        self.low_conv = tf.nn.relu(tf.nn.conv2d(self.images, self.low_weight, strides=[1,1,1,1], padding='SAME') + self.low_biases)
+        
+        # NOTE: Init One block weight
         self.weight_block, self.biases_block = self.DesWBH(self.des_block_H, 3)
-        print(self.weight_block)
-        print(self.biases_block)
-
-
-    #def model(self):
+        #print(self.weight_block, self.biases_block)
+        self.pred = self.model()
 
     def train(self, config):
         
