@@ -12,10 +12,10 @@ flags.DEFINE_integer("stride", 14, "the size of stride")
 flags.DEFINE_string("checkpoint_dir", "checkpoint", "Name of checkpoint directory")
 flags.DEFINE_float("learning_rate", 1e-5 , "The learning rate")
 flags.DEFINE_integer("batch_size", 32, "the size of batch")
-flags.DEFINE_integer("growth_rate", 16, "the size of growrate")
 flags.DEFINE_integer("des_block_H", 8, "the size dense_block layer number")
 flags.DEFINE_integer("des_block_ALL", 3, "the size dense_block")
 flags.DEFINE_string("result_dir", "result", "Name of result directory")
+flags.DEFINE_integer("growth_rate", 16, "the size of growrate")
 flags.DEFINE_string("test_img", "", "test_img")
 
 

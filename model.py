@@ -51,39 +51,46 @@ class SRDense(object):
 
         self.build_model()
     
-    # Create DenseNet init weight and biases
-    def DesWBH(self, layers, filter_size):
+    # Create DenseNet init weight and biases, init_block mean the growrate
+    def DesWBH(self, desBlock_layer, filter_size, outlayer):
         weightsH = {}
         biasesH = {}
-        for i in range(1, layers+1):
-            if i is 1:
-                weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([filter_size, filter_size, self.growth_rate, self.growth_rate], stddev=np.sqrt(2.0/filter_size * filter_size/self.growth_rate)), name='w_H_%d' % i)}) 
-            else:
-                weightsH.update({'w_H_%d' % i: tf.Variable(tf.random_normal([filter_size, filter_size, self.growth_rate * (i-1), self.growth_rate], stddev=np.sqrt(2.0/filter_size * filter_size/self.growth_rate * i )), name='w_H_%d' % i)}) 
-            biasesH.update({'b_H_%d' % i:tf.Variable(tf.zeros([self.growth_rate], name='b_H_%d' % i))})
+        fs = filter_size
+        for i in range(1, outlayer+1):
+            for j in range(1, desBlock_layer+1):
+                if j is 1:
+                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, self.growth_rate, self.growth_rate], stddev=np.sqrt(2.0/fs * fs/self.growth_rate)), name='w_H_%d_%d' % (i, j))}) 
+                else:
+                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, self.growth_rate * (j-1), self.growth_rate], stddev=np.sqrt(2.0/ fs * fs/ self.growth_rate * j )), name='w_H_%d_%d' % (i, j))}) 
+                biasesH.update({'b_H_%d_%d' % (i, j): tf.Variable(tf.zeros([self.growth_rate], name='b_H_%d_%d' % (i, j)))})
         return weightsH, biasesH
     
 
     # Create one Dense Block Convolution Layer 
-    def desBlock(self, layers, filter_size):
-        conv = []
-        for i in range(1, layers+1):
-            # The first conv need connect with low level layer
-            if i is 1:
-                x = (tf.nn.conv2d(self.low_conv, self.weight_block['w_H_%d' % i], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_%d' % i])
-                x = tf.nn.relu(x)
-                conv.append(x)
-            else:
-                concat = Concatenation(conv)
-                x = (tf.nn.conv2d(concat, self.weight_block['w_H_%d' % i], strides=[1,1,1,1], padding='SAME')+ self.biases_block['b_H_%d' % i])
-                x = tf.nn.relu(x)
-                conv.append(x)
+    def desBlock(self, desBlock_layer, outlayer, filter_size=3 ):
+        nextlayer = self.low_conv
+        conv = list()
+        for i in range(1, outlayer+1):
+            conv_in = list()
+            for j in range(1, desBlock_layer+1):
+                # The first conv need connect with low level layer
+                if j is 1:
+                    x = tf.nn.conv2d(nextlayer, self.weight_block['w_H_%d_%d' %(i, j)], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_%d_%d' % (i, j)]
+                    x = tf.nn.relu(x)
+                    conv_in.append(x)
+                else:
+                    concat = Concatenation(conv_in)
+                    x = tf.nn.conv2d(concat, self.weight_block['w_H_%d_%d' % (i, j)], strides=[1,1,1,1], padding='SAME')+ self.biases_block['b_H_%d_%d' % (i, j)]
+                    x = tf.nn.relu(x)
+                    conv_in.append(x)
+            nextlayer = conv_in[-1]
+            conv.append(conv_in)
         return conv
  
     def model(self):
         
-        a =self.desBlock(self.des_block_H, 3)    
-        print(Concatenation(a))
+        x = self.desBlock(self.des_block_H, self.des_block_ALL, filter_size = 3)
+        print(x)
         
 
 
@@ -95,8 +102,11 @@ class SRDense(object):
         self.low_biases = tf.Variable(tf.zeros([16], name='b_low'))
         self.low_conv = tf.nn.relu(tf.nn.conv2d(self.images, self.low_weight, strides=[1,1,1,1], padding='SAME') + self.low_biases)
         
-        # NOTE: Init One block weight
-        self.weight_block, self.biases_block = self.DesWBH(self.des_block_H, 3)
+        # NOTE: Init each block weight
+        """
+            16 -> 128 -> 1024 
+        """
+        self.weight_block, self.biases_block = self.DesWBH(self.des_block_H, 3, self.des_block_ALL)
         #print(self.weight_block, self.biases_block)
         self.pred = self.model()
 
@@ -111,17 +121,7 @@ class SRDense(object):
 
         residul = make_bicubic(input_, config.scale)
 
-
-        '''
-        opt = tf.train.AdamOptimizer(learning_rate=config.learning_rate)
-        grad_and_value = opt.compute_gradients(self.loss)
-
-        clip = tf.Variable(0.1, name='clip') 
-        capped_gvs = [(tf.clip_by_value(grad, -(clip), clip), var) for grad, var in grad_and_value]
-
-        self.train_op = opt.apply_gradients(capped_gvs)
-        '''
-        # Stochastic gradient descent with the standard backpropagation
+        # Stochastic gradient descent with tself.des_block_ALLhe standard backpropagation
         self.train_op = tf.train.AdamOptimizer(learning_rate=config.learning_rate).minimize(self.loss)
         tf.initialize_all_variables().run()
 
@@ -141,7 +141,6 @@ class SRDense(object):
                     batch_labels = label_[idx * config.batch_size : (idx + 1) * config.batch_size]
                     counter += 1
                     _, err = self.sess.run([self.train_op, self.loss], feed_dict={self.images: batch_images, self.labels: batch_labels, self.residul: batch_residul })
-
                     if counter % 10 == 0:
                         print("Epoch: [%2d], step: [%2d], time: [%4.4f], loss: [%.8f]" % ((ep+1), counter, time.time()-time_, err))
                         #print(label_[1] - self.pred.eval({self.images: input_})[1],'loss:]',err)
@@ -167,8 +166,9 @@ class SRDense(object):
                 imsave(x, config.result_dir + '/result.png', config)
             else:
                 string = self.test_img.split(".")
-                print( string)
+                print(string)
                 imsave(x, config.result_dir + '/' + string[0] + '.png', config)
+
     def load(self, checkpoint_dir):
         """
             To load the checkpoint use to test or pretrain
