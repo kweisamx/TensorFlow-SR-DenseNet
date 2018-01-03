@@ -58,18 +58,9 @@ def preprocess(path ,scale = 3):
     label_ = modcrop(img, scale)
     
     input_ = cv2.resize(label_, None, fx = 1.0/scale, fy = 1.0/scale, interpolation = cv2.INTER_AREA) # Resize by scaling factor
+
     
-
-    #NOTE: add noise
-    s_vs_p = 0.5
-    amount = 0.1
-    out = input_.copy()
-    num_salt = np.ceil(amount * input_.size * s_vs_p)
-    coords = [np.random.randint(0, i - 1, int(num_salt)) for i in input_.shape]
-    out[coords] = 1
-    #checkimage(out)
-
-    return out, label_
+    return input_, label_
 
 def prepare_data(dataset="Train",Input_img=""):
     """
@@ -129,6 +120,7 @@ def make_sub_data(data, config):
             for y in range(0, w - config.image_size + 1, config.stride):
 
                 sub_input = input_[x: x + config.image_size, y: y + config.image_size] # 17 * 17
+                #checkimage(sub_input)
 
 
                 # Reshape the subinput and sublabel
@@ -144,9 +136,10 @@ def make_sub_data(data, config):
         for x in range(0, h * config.scale - config.image_size * config.scale + 1, config.stride * config.scale):
             for y in range(0, w * config.scale - config.image_size * config.scale + 1, config.stride * config.scale):
                 sub_label = label_[x: x + config.image_size * config.scale, y: y + config.image_size * config.scale] # 17r * 17r
-                
+                #checkimage(sub_label)
                 # Reshape the subinput and sublabel
                 sub_label = sub_label.reshape([config.image_size * config.scale , config.image_size * config.scale, config.c_dim])
+
                 # Normialize
                 sub_label =  (sub_label / 255.0) * 2 - 1
                 # Add to sequence
@@ -154,16 +147,6 @@ def make_sub_data(data, config):
 
     return sub_input_sequence, sub_label_sequence
 
-
-# NOTE: handle the input with bicubic
-def make_bicubic(input_, scale = 3):
-    residul = []
-    for i in range(input_.shape[0]):
-        img = cv2.resize(input_[i].copy() , None, fx = scale, fy = scale, interpolation = cv2.INTER_CUBIC) 
-        residul.append(img)
-
-    residul = np.asarray(residul)
-    return residul
 
 def read_data(path):
     """
@@ -213,6 +196,5 @@ def input_setup(config):
     # Make list to numpy array. With this transform
     arrinput = np.asarray(sub_input_sequence) # [?, 17, 17, 3]
     arrlabel = np.asarray(sub_label_sequence) # [?, 17 * scale , 17 * scale, 3]
-    
     make_data_hf(arrinput, arrlabel, config)
 

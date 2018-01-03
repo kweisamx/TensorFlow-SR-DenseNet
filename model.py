@@ -13,13 +13,19 @@ from utils import (
     load_data,
     preprocess,
     modcrop,
-    make_bicubic,
 )
 def Relu(input_):
     return tf.nn.relu(input_)
 
 def Concatenation(layers):
     return tf.concat(layers, axis=3)
+   
+def SkipConnect(conv):
+    skipconv = list()
+    for i in conv:
+        x = Concatenation(i)
+        skipconv.append(x)
+    return skipconv
 
 class SRDense(object):
 
@@ -86,17 +92,50 @@ class SRDense(object):
             nextlayer = conv_in[-1]
             conv.append(conv_in)
         return conv
- 
+
+    def bot_layer(self, input_layer):
+        x = tf.nn.conv2d(input_layer, self.bot_weight, strides=[1,1,1,1], padding='SAME') + self.bot_biases
+        x = tf.nn.relu(x)
+        return x 
+
+    def deconv_layer(self, input_layer):
+        deconv_output = [self.batch, self.label_size, self.label_size, 256]
+        print(input_layer)
+        x = tf.nn.conv2d_transpose(input_layer, self.deconv1_weight, output_shape=deconv_output, strides=[1,2,2,1], padding='SAME') + self.deconv1_biases
+        #print(x)
+        x = tf.nn.relu(x)
+        
+        return x 
+    def reconv_layer(self, input_layer):
+        x = tf.nn.conv2d(input_layer, self.reconv_weight, strides=[1,1,1,1], padding='SAME') + self.reconv_biases
+        x = tf.nn.relu(x)
+        return x 
+        
     def model(self):
         
         x = self.desBlock(self.des_block_H, self.des_block_ALL, filter_size = 3)
+
+        # NOTE: Cocate all dense block
+        x = SkipConnect(x)
+        print(x)
+        x.append(self.low_conv)
+        print(x)
+        x = Concatenation(x)
+        print(x)
+        x = self.bot_layer(x)
+        print(x)
+        x = self.deconv_layer(x)
+        print(x)
+        x = self.reconv_layer(x)
         print(x)
         
+        return x 
 
 
     def build_model(self):
         self.images = tf.placeholder(tf.float32, [None, self.image_size, self.image_size, self.c_dim], name='images')
         self.labels = tf.placeholder(tf.float32, [None, self.label_size, self.label_size, self.c_dim], name='labels')
+
         # Low Level Layer
         self.low_weight = tf.Variable(tf.random_normal([3, 3, self.c_dim, 16], stddev= np.sqrt(2.0/9/16)), name='w_low')
         self.low_biases = tf.Variable(tf.zeros([16], name='b_low'))
@@ -106,9 +145,35 @@ class SRDense(object):
         """
             16 -> 128 -> 1024 
         """
+        # DenseNet blocks 
         self.weight_block, self.biases_block = self.DesWBH(self.des_block_H, 3, self.des_block_ALL)
         #print(self.weight_block, self.biases_block)
+
+        # Bottleneck layer
+        allfeature = self.growth_rate * self.des_block_H * self.des_block_ALL + self.growth_rate
+        print(allfeature)
+        self.bot_weight = tf.Variable(tf.random_normal([1, 1, allfeature, 256], stddev = np.sqrt(2.0/1/256)), name='w_bot')
+        self.bot_biases = tf.Variable(tf.zeros([256], name='b_bot'))
+
+        # Deconvolution layer
+        self.batch = tf.placeholder(tf.int32, shape=[], name='batch')
+        self.deconv1_weight = tf.Variable(tf.random_normal([3, 3, 256, 256], stddev = np.sqrt(2.0/9/256)), name='w_deconv1')
+        self.deconv1_biases = tf.Variable(tf.zeros([256], name='b_deconv1'))
+
+        # Reconstruction layer
+
+        self.reconv_weight = tf.Variable(tf.random_normal([3, 3, 256, self.c_dim], stddev = np.sqrt(2.0/9/self.c_dim)), name ='w_reconv')
+        self.reconv_biases = tf.Variable(tf.zeros([self.c_dim], name='b_reconv'))
+
+        
         self.pred = self.model()
+        print(self.pred.get_shape())
+        print(self.labels.get_shape())
+
+
+        self.loss = tf.reduce_mean(tf.square(self.labels - self.pred))
+
+        self.saver = tf.train.Saver() # To save checkpoint
 
     def train(self, config):
         
@@ -118,8 +183,6 @@ class SRDense(object):
         data_dir = checkpoint_dir(config)
         
         input_, label_ = read_data(data_dir)
-
-        residul = make_bicubic(input_, config.scale)
 
         # Stochastic gradient descent with tself.des_block_ALLhe standard backpropagation
         self.train_op = tf.train.AdamOptimizer(learning_rate=config.learning_rate).minimize(self.loss)
@@ -137,10 +200,9 @@ class SRDense(object):
                 batch_idxs = len(input_) // config.batch_size
                 for idx in range(0, batch_idxs):
                     batch_images = input_[idx * config.batch_size : (idx + 1) * config.batch_size]
-                    batch_residul = residul[idx * config.batch_size : (idx + 1) * config.batch_size]
                     batch_labels = label_[idx * config.batch_size : (idx + 1) * config.batch_size]
                     counter += 1
-                    _, err = self.sess.run([self.train_op, self.loss], feed_dict={self.images: batch_images, self.labels: batch_labels, self.residul: batch_residul })
+                    _, err = self.sess.run([self.train_op, self.loss], feed_dict={self.images: batch_images, self.labels: batch_labels, self.batch: self.batch_size})
                     if counter % 10 == 0:
                         print("Epoch: [%2d], step: [%2d], time: [%4.4f], loss: [%.8f]" % ((ep+1), counter, time.time()-time_, err))
                         #print(label_[1] - self.pred.eval({self.images: input_})[1],'loss:]',err)
@@ -174,7 +236,7 @@ class SRDense(object):
             To load the checkpoint use to test or pretrain
         """
         print("\nReading Checkpoints.....\n\n")
-        model_dir = "%s_%s_%s" % ("rees", self.image_size, self.scale)# give the model name by label_size
+        model_dir = "%s_%s_%s" % ("dnsr", self.image_size, self.scale)# give the model name by label_size
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
         ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
         
@@ -189,8 +251,8 @@ class SRDense(object):
         """
             To save the checkpoint use to test or pretrain
         """
-        model_name = "REES.model"
-        model_dir = "%s_%s_%s" % ("rees", self.image_size, self.scale)
+        model_name = "DenseNetSR.model"
+        model_dir = "%s_%s_%s" % ("dnsr", self.image_size, self.scale)
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
 
         if not os.path.exists(checkpoint_dir):
