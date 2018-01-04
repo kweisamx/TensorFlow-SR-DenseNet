@@ -105,20 +105,15 @@ def make_sub_data(data, config):
             h, w, c = input_.shape
         else:
             h, w = input_.shape # is grayscale
-        
-        if not config.is_train:
-            input_ = imread(data[i])
-            # Normialize
-            input_ = (input_ / 255.0 ) * 2 - 1 
-            sub_input_sequence.append(input_)
-            return sub_input_sequence, sub_label_sequence
 
         # NOTE: make subimage of LR and HR
 
         # Input 
+        nx, ny = 0, 0
         for x in range(0, h - config.image_size + 1, config.stride):
+            nx += 1; ny = 0
             for y in range(0, w - config.image_size + 1, config.stride):
-
+                ny += 1
                 sub_input = input_[x: x + config.image_size, y: y + config.image_size] # 17 * 17
                 #checkimage(sub_input)
 
@@ -145,7 +140,7 @@ def make_sub_data(data, config):
                 # Add to sequence
                 sub_label_sequence.append(sub_label)
 
-    return sub_input_sequence, sub_label_sequence
+    return sub_input_sequence, sub_label_sequence , nx, ny
 
 
 def read_data(path):
@@ -190,11 +185,11 @@ def input_setup(config):
 
 
     # Make sub_input and sub_label, if is_train false more return nx, ny
-    sub_input_sequence, sub_label_sequence = make_sub_data(data, config)
+    sub_input_sequence, sub_label_sequence, nx, ny = make_sub_data(data, config)
 
 
     # Make list to numpy array. With this transform
-    arrinput = np.asarray(sub_input_sequence) # [?, 17, 17, 3]
-    arrlabel = np.asarray(sub_label_sequence) # [?, 17 * scale , 17 * scale, 3]
+    arrinput = np.asarray(sub_input_sequence) 
+    arrlabel = np.asarray(sub_label_sequence) 
     make_data_hf(arrinput, arrlabel, config)
-
+    return nx, ny
