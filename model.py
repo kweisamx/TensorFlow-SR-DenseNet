@@ -62,9 +62,9 @@ class SRDense(object):
         for i in range(1, outlayer+1):
             for j in range(1, desBlock_layer+1):
                 if j is 1:
-                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, 16, 16], stddev=np.sqrt(2.0/9/128)), name='w_H_%d_%d' % (i, j))}) 
+                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, 16, 16], stddev=np.sqrt(2.0/9/16)), name='w_H_%d_%d' % (i, j))}) 
                 else:
-                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, self.growth_rate * (j-1), self.growth_rate], stddev=np.sqrt(2.0/9/self.growth_rate * (j-1) )), name='w_H_%d_%d' % (i, j))}) 
+                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, self.growth_rate * (j-1), self.growth_rate], stddev=np.sqrt(2.0/9/16)), name='w_H_%d_%d' % (i, j))}) 
                 biasesH.update({'b_H_%d_%d' % (i, j): tf.Variable(tf.zeros([self.growth_rate], name='b_H_%d_%d' % (i, j)))})
         return weightsH, biasesH
     
@@ -100,7 +100,8 @@ class SRDense(object):
         return x 
 
     def deconv_layer(self, input_layer):
-        deconv_output = [self.batch, self.label_size, self.label_size, 256]
+        #deconv_output = [1, self.label_size, self.label_size, 256]
+        print(input_layer)
         x = tf.nn.conv2d_transpose(input_layer, self.deconv1_weight, output_shape=self.deconv_output, strides=[1,2,2,1], padding='SAME') + self.deconv1_biases
         x = tf.nn.relu(x)
         return x 
@@ -109,42 +110,61 @@ class SRDense(object):
         return x 
 
     def test_layer(self):
+        conv = list()
         conv_in = list()
-        #1
+        #1_1
         x = tf.nn.conv2d(self.low_conv, self.weight_block['w_H_1_1'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_1_1']
-        x = tf.nn.relu(x)
-        print(x)
-        conv_in.append(x)
-        #2
-        x = tf.nn.conv2d(x, self.weight_block['w_H_1_2'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_1_2']
-        print(x)
-        x = tf.nn.relu(x)
-        print(x)
-        conv_in.append(x)
-        print(conv_in)
-        x = Concatenation(conv_in)
-        print(x)
-        #3
-        x = tf.nn.conv2d(x, self.weight_block['w_H_1_3'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_1_3']
         x = tf.nn.relu(x)
         conv_in.append(x)
 
+        #1_2
+        x = tf.nn.conv2d(x, self.weight_block['w_H_1_2'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_1_2']
+        x = tf.nn.relu(x)
+        conv_in.append(x)
         x = Concatenation(conv_in)
+
+        #1_3
+        x = tf.nn.conv2d(x, self.weight_block['w_H_1_3'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_1_3']
+        x = tf.nn.relu(x)
+        conv_in.append(x)
+        nextinput = x 
+        conv.append(Concatenation(conv_in))
+        
+        #2_1
+        conv_in = []
+        x = tf.nn.conv2d(x, self.weight_block['w_H_2_1'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_2_1']
+        x = tf.nn.relu(x)
+        conv_in.append(x)
+
+
+        #2_2
+        x = tf.nn.conv2d(x, self.weight_block['w_H_2_2'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_2_2']
+        x = tf.nn.relu(x)
+        conv_in.append(x)
+        x = Concatenation(conv_in)
+
+        #2_3
+        x = tf.nn.conv2d(x, self.weight_block['w_H_1_3'], strides=[1,1,1,1], padding='SAME') + self.biases_block['b_H_1_3']
+        x = tf.nn.relu(x)
+        conv_in.append(x)
+        conv.append(Concatenation(conv_in))
+        
+        x = Concatenation(conv)
         print(x)
         return x 
         
         
     def model(self):
-        #x = self.desBlock(self.des_block_H, self.des_block_ALL, filter_size = 3)
+        x = self.desBlock(self.des_block_H, self.des_block_ALL, filter_size = 3)
         # NOTE: Cocate all dense block
 
-        #x = SkipConnect(x)
+        x = SkipConnect(x)
         #print('Skip:',x)
-        #x.append(self.low_conv)
+        x.append(self.low_conv)
         #print('add low:',x)
-        #x = Concatenation(x)
+        x = Concatenation(x)
         #print('concatenation:',x)
-        x = self.test_layer()
+        #x = self.test_layer()
         x = self.bot_layer(x)
         print('bot:',x)
         x = self.deconv_layer(x)
@@ -165,7 +185,7 @@ class SRDense(object):
         self.batch = tf.placeholder(tf.int32, shape=[], name='batch')
 
         # Low Level Layer
-        self.low_weight = tf.Variable(tf.random_normal([3, 3, self.c_dim, 16], stddev= np.sqrt(2.0/16)), name='w_low')
+        self.low_weight = tf.Variable(tf.random_normal([3, 3, self.c_dim, 16], stddev= np.sqrt(2.0/9/16)), name='w_low')
         self.low_biases = tf.Variable(tf.zeros([16], name='b_low'))
         self.low_conv = tf.nn.relu(tf.nn.conv2d(self.images, self.low_weight, strides=[1,1,1,1], padding='SAME') + self.low_biases)
         
@@ -180,18 +200,18 @@ class SRDense(object):
         # Bottleneck layer
         allfeature = self.growth_rate * self.des_block_H * self.des_block_ALL + 16
         print(allfeature)
-        allfeature = 48
-        self.bot_weight = tf.Variable(tf.random_normal([1, 1, allfeature, 256], stddev = np.sqrt(2.0/256)), name='w_bot')
+        #allfeature = 96
+        self.bot_weight = tf.Variable(tf.random_normal([1, 1, allfeature, 256], stddev = np.sqrt(2.0/1/256)), name='w_bot')
         self.bot_biases = tf.Variable(tf.zeros([256], name='b_bot'))
 
         # Deconvolution layer
         #self.batch = tf.placeholder(tf.int32, shape=[], name='batch')
-        self.deconv1_weight = tf.Variable(tf.random_normal([2, 2, 256, 256], stddev = np.sqrt(2.0/256)), name='w_deconv1')
+        self.deconv1_weight = tf.Variable(tf.random_normal([2, 2, 256, 256], stddev = np.sqrt(2.0/4/256)), name='w_deconv1')
         self.deconv1_biases = tf.Variable(tf.zeros([256], name='b_deconv1'))
 
         # Reconstruction layer
 
-        self.reconv_weight = tf.Variable(tf.random_normal([3, 3, 256, self.c_dim], stddev = np.sqrt(2.0/self.c_dim)), name ='w_reconv')
+        self.reconv_weight = tf.Variable(tf.random_normal([3, 3, 256, self.c_dim], stddev = np.sqrt(2.0/9/self.c_dim)), name ='w_reconv')
         self.reconv_biases = tf.Variable(tf.zeros([self.c_dim], name='b_reconv'))
 
         
@@ -230,7 +250,7 @@ class SRDense(object):
                     batch_images = input_[idx * config.batch_size : (idx + 1) * config.batch_size]
                     batch_labels = label_[idx * config.batch_size : (idx + 1) * config.batch_size]
                     counter += 1
-                    _, err = self.sess.run([self.train_op, self.loss], feed_dict={self.images: batch_images, self.labels: batch_labels, self.batch: self.batch_size, self.deconv_output:[1, self.label_size, self.label_size, 256]})
+                    _, err = self.sess.run([self.train_op, self.loss], feed_dict={self.images: batch_images, self.labels: batch_labels, self.batch: 1, self.deconv_output:[self.batch_size, self.label_size, self.label_size, 256]})
                     if counter % 10 == 0:
                         print("Epoch: [%2d], step: [%2d], time: [%4.4f], loss: [%.8f]" % ((ep+1), counter, time.time()-time_, err))
                         #print(batch_labels)
