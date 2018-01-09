@@ -64,7 +64,7 @@ class SRDense(object):
                 if j is 1:
                     weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, 16, 16], stddev=np.sqrt(2.0/9/16)), name='w_H_%d_%d' % (i, j))}) 
                 else:
-                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, self.growth_rate * (j-1), self.growth_rate], stddev=np.sqrt(2.0/9/16)), name='w_H_%d_%d' % (i, j))}) 
+                    weightsH.update({'w_H_%d_%d' % (i, j): tf.Variable(tf.random_normal([fs, fs, self.growth_rate * (j-1), self.growth_rate], stddev=np.sqrt(2.0/9/(self.growth_rate * (j-1)))), name='w_H_%d_%d' % (i, j))}) 
                 biasesH.update({'b_H_%d_%d' % (i, j): tf.Variable(tf.zeros([self.growth_rate], name='b_H_%d_%d' % (i, j)))})
         return weightsH, biasesH
     
@@ -185,7 +185,7 @@ class SRDense(object):
         self.batch = tf.placeholder(tf.int32, shape=[], name='batch')
 
         # Low Level Layer
-        self.low_weight = tf.Variable(tf.random_normal([3, 3, self.c_dim, 16], stddev= np.sqrt(2.0/9/16)), name='w_low')
+        self.low_weight = tf.Variable(tf.random_normal([3, 3, self.c_dim, 16], stddev= np.sqrt(2.0/9/self.c_dim)), name='w_low')
         self.low_biases = tf.Variable(tf.zeros([16], name='b_low'))
         self.low_conv = tf.nn.relu(tf.nn.conv2d(self.images, self.low_weight, strides=[1,1,1,1], padding='SAME') + self.low_biases)
         
@@ -201,7 +201,7 @@ class SRDense(object):
         allfeature = self.growth_rate * self.des_block_H * self.des_block_ALL + 16
         print(allfeature)
         #allfeature = 96
-        self.bot_weight = tf.Variable(tf.random_normal([1, 1, allfeature, 256], stddev = np.sqrt(2.0/1/256)), name='w_bot')
+        self.bot_weight = tf.Variable(tf.random_normal([1, 1, allfeature, 256], stddev = np.sqrt(2.0/1/allfeature)), name='w_bot')
         self.bot_biases = tf.Variable(tf.zeros([256], name='b_bot'))
 
         # Deconvolution layer
@@ -211,7 +211,7 @@ class SRDense(object):
 
         # Reconstruction layer
 
-        self.reconv_weight = tf.Variable(tf.random_normal([3, 3, 256, self.c_dim], stddev = np.sqrt(2.0/9/self.c_dim)), name ='w_reconv')
+        self.reconv_weight = tf.Variable(tf.random_normal([3, 3, 256, self.c_dim], stddev = np.sqrt(2.0/9/256)), name ='w_reconv')
         self.reconv_biases = tf.Variable(tf.zeros([self.c_dim], name='b_reconv'))
 
         
