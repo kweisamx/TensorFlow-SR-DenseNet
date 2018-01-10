@@ -7,6 +7,8 @@
 
 ![](https://i.imgur.com/ZlNl6Zu.png)
 
+![](https://i.imgur.com/8TJN97r.png)
+
 We present a highly accurate single-image super-resolution (SR) method, Use the DenseNet, and use deconvulotion to scaling, the network model of densenet is:
 ```python
 def desBlock(self, desBlock_layer, outlayer, filter_size=3 ):
